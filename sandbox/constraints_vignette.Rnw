@@ -1,0 +1,130 @@
+\documentclass[12pt,letterpaper,english]{article}
+\usepackage[OT1]{fontenc}
+\usepackage{Sweave}
+\usepackage{verbatim}
+\usepackage{Rd}
+\usepackage{Sweave}
+
+\begin{document}
+
+\title{PortfolioAnalytics Constraints Functionality}
+\author{Ross Bennett}
+
+\maketitle
+
+\begin{abstract}
+The purpose of this vignette is to demonstrate the functionality of constraints in PortfolioAnalytics.
+\end{abstract}
+
+\tableofcontents
+
+\section{Constraints}
+The following constraints are currently supported
+\begin{itemize}
+  \item[weight\_sum] The weight\_sum constraint is used to constrain the sum of weights. Common use cases of this are to apply a full investment, dollar neutral, or leverage constraint.
+  \item[box] Box constraints are used to constrain the minimum and maximum weights of assets. Standard box constraints with a single upper bound and single lower bound as well as per asset inequality constraints on weights can be specified. A special case of box constraints is a long only constraint where the minimum weight is 0 and maximum weight is 1.
+  \item[group] Group constraints are used to specify the minimum and maximum weights of groups of assets. A common use case to group assets by market cap or style. Note that group constraints is only implemented for the ROI solvers. Implementing the group constraints for other solvers should be possible in \code{constrained\_objective} using the \code{constrained\_group\_tmp} function.
+  \item[turnover] Turnover can be specified as a constraint, but is not currently implemented in any solvers. Turnover constraint may not be able to be implemented in the ROI glpk solver. It is implemented for the ROI quadprog solver in sandbox/testing\_turnover.gmv.R. Currently, turnover can be implemented as an objective function and the function has been added to the file \code{R/objectiveFUN.R}. The user can specify a turnover target \code{turnover\_target}. Any deviation from the target will be penalized.
+  \item[diversification] Diversification can be specified as a constraint, but is not currently implemented in any solvers. This can be done in the mapping function in the next part or implemented inside \code{constrained\_objective}. The user can  specify a diversification target value \code{div\_target}. Any deviation from the target will be penalized.
+  \item[volatility] Volatility can be specified as a constraint, but it is not currently implemented for any solvers. This can be done in the mapping function in the next part or implemented inside \code{constrained\_objective}. See \code{constrained\_objective} for how volatility is handled as an objective. The user can specify a volatility target value \code{vol\_target}. Any deviation from the target will be penalized.
+  \item[position\_limit] Integer constraint for max position cardinality constraint. This may be able to be implemented in \code{randomize\_portfolio} by generating portfolios with the number of non-zero weights equal to \code{max\_pos}, then fill in weights of zero so the length of the weights vector is equal to the number of assets, then scramble the weights vector. The number of non-zero weights could also be random so that the number of non-zero weights is not always equal to \code{max\_pos}. This could be implemented in the DEoptim solver with the mapping function. This might be do-able in Rglpk for max return and min ETL. Rglpk supports mixed integer types, but solve.QP does not. May be able to use branch-and-bound technique using solve.QP.
+\end{itemize}
+
+Constraint TODO
+\begin{itemize}
+  \item[Quadratic] Need more help on this. Note that the ROI solvers quadprog and glpk do not support quadratic constraints, they only support linear constraints. The ROI pluging for cplex does support quadratic constraints, but this is a commercial product. What are some use case examples other than diversification and volatility?
+\end{itemize}
+
+<<>>=
+library(PortfolioAnalytics)
+
+data(edhec)
+ret <- edhec[, 1:4]
+fund.names <- colnames(ret)
+
+pspec <- portfolio.spec(assets=fund.names)
+@
+
+Add full investment constraint
+<<>>=
+pspec <- add.constraint(portfolio=pspec, 
+                        type="weight_sum", 
+                        min_sum=1, 
+                        max_sum=1, 
+                        enabled=TRUE)
+pspec$constraints[[1]]
+@
+
+Add box constraints for long only
+<<>>=
+pspec <- add.constraint(portfolio=pspec, 
+                        type="box", 
+                        min=0, 
+                        max=1, 
+                        enabled=TRUE)
+pspec$constraints[[2]]
+@
+
+Update the box constraints to specify per asset weight constraints.
+<<>>=
+pspec <- add.constraint(portfolio=pspec, 
+                        type="box", 
+                        min=c(0.05, 0.02, 0.04, 0.06),
+                        max=c(0.35, 0.55, 0.55, 0.65),
+                        enabled=TRUE,
+                        indexnum=2)
+pspec$constraints[[2]]
+@
+
+Add group constraints.
+The assets are grouped in 2 groups of 2 assets.
+The sum of asset weights of the first group must be greater than or equal to 0.15 and less than or equal to 0.65.
+The sum asset weights of the second group must be greater than or equal to 0.25 and less than or equal to 0.55.
+Labels for the groups can be specified (e.g. size, asset class, style, etc.). By default, the group labels will be group1, group2, ..., groupN for N groups. 
+<<>>=
+pspec <- add.constraint(portfolio=pspec, 
+                        type="group", 
+                        groups=c(2, 2),
+                        group_labels=c("Style A", "Style B"),
+                        group_min=c(0.15, 0.25),
+                        group_max=c(0.65, 0.55),
+                        enabled=TRUE)
+pspec$constraints[[3]]
+@
+
+Add turnover constraint. Any deviation from \code{turnover\_target} is penalized.
+<<>>=
+pspec <- add.constraint(portfolio=pspec,
+                        type="turnover", 
+                        turnover_target=0.6,
+                        enabled=TRUE)
+pspec$constraints[[4]]
+@
+
+Add diversification constraint. Any deviation from \code{div\_target} will be penalized. 
+<<>>=
+pspec <- add.constraint(portfolio=pspec,
+                        type="diversification",
+                        div_target=0.7,
+                        enabled=TRUE)
+pspec$constraints[[5]]
+@
+
+Add volatility constraint. Any deviation from \code{vol\_target} will be penalized.
+<<>>=
+pspec <- add.constraint(portfolio=pspec,
+                        type="volatility",
+                        vol_target=0.035,
+                        enabled=TRUE)
+pspec$constraints[[6]]
+@
+
+Add position\_limit constraint. Constraint on the maximum number of positions or number of assets with non-zero weights.
+<<>>=
+pspec <- add.constraint(portfolio=pspec,
+                        type="position_limit",
+                        max_pos=3,
+                        enabled=TRUE)
+pspec$constraints[[7]]
+@
+\end{document}
